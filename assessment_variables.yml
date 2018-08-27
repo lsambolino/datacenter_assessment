@@ -1,0 +1,230 @@
+---
+- hosts: rhelmachine
+  vars:
+       network_interfaces_number: "{{ (network_interfaces_calculation.stdout|int) - 1}}"
+       real_disks_number: '{{ ((disks_number.stdout|int) - 1) }}'
+
+  gather_facts: True
+  tasks:
+  - name: Gather Facts
+    setup:
+        gather_subset=all
+    register: facts
+
+###################### Networks  ####################################################################
+
+# Collect Number of Network Interfaces | These are external network interfaces (Network Cards)
+  - name: Collect number of network interfaces
+    shell: ls -A /sys/class/net | wc -l
+    register: network_interfaces_calculation
+    ignore_errors: true
+
+#  - debug:
+#      msg: "Network interfaces: {{ network_interfaces_number}}"
+
+# Collect first DNS
+  - name: Collect the 1st DNS
+    shell: cat /etc/resolv.conf | grep nameserver | awk '{if(NR==1) print $2}'
+    register: first_nameserver
+    ignore_errors: true
+
+# Collect second DNS
+  - name: Collect the 2nd DNS
+    shell: cat /etc/resolv.conf | grep nameserver | awk '{if(NR==2) print $2}'
+    register: second_nameserver
+    ignore_errors: true
+
+# Collect Storage Type
+  - name: Collect Storage Type
+    shell: df -T | awk '$1 == "/dev/sda1" { print $2}'
+    register: storage_type
+
+  - debug:
+      msg: "Storage type: {{ storage_type.stdout }}"
+
+
+##################### CPU ###########################################################################
+
+# Collect SAR | Max CPU Usage | Command checks in folder for maximum CPU usage and extracts the highest by sort and tail | Assumption that time is European Style
+  - name: Test Sar
+    shell: ls /var/log/sa/sa[0-9]*|xargs -I '{}' sar -u -f {} 2>/dev/null|awk '/^[0-9]/&&!/^12:00:01|RESTART|CPU/{print $3}'|sort -n | tail -1 | sed 's/,/\./' 
+    become: true
+    register: max_cpu
+    ignore_errors: true
+
+  - debug:
+      msg: "Max CPU: {{ max_cpu.stdout }}"
+
+## Here I must add a check if Max CPU fails !!!
+
+# Collect Average CPU Monthly Usage
+  - script: ./scripts/Average_CPU_Month.sh
+    register: average_cpu
+    ignore_errors: true
+
+  - debug:
+      msg: "Average CPU: {{ average_cpu.stdout }}"
+
+#Define  a division between integers
+#retries: "{{ apache_test_retries | int }}"
+
+###################### Disks and Volumes ##########################################################
+# Collect Boot Disk
+  - name: Get Size of Boot Volume
+    shell: fdisk -l | grep 'Disk /dev/sda' | awk '{ printf $3 }'
+    become: true
+    register: sda_size
+
+  - debug:
+      msg: "sda_size: {{ sda_size.stdout }}"
+
+# Collect Used Boot Volume
+  - name: Get Used Boot Volume
+    shell: df -h | grep $(fdisk -l | grep '^/dev/[a-z]*[0-9]' | awk '$2 == "*" { printf $1}') | awk '{print $3}' | sed 's/[^0-9]*//g'
+    become: true
+    register: boot_volume_used
+
+  - debug:
+      msg: "Used Boot Volume: {{ boot_volume_used.stdout }}"
+
+# Collect Boot Volume Percentage
+  - name: Get Boot Volume Percentage
+    shell: df -h | grep $(fdisk -l | grep '^/dev/[a-z]*[0-9]' | awk '$2 == "*" { printf $1}') | awk '{print $5}'
+    become: yes
+    register: boot_volume_percentage
+
+  - debug:
+      msg: "boot_volume_percentage: {{ boot_volume_percentage.stdout }}"
+
+# Collect Extended Partition Used
+  - name: Get Used Disk Size
+    shell: df -h --total | awk '$1 == "total"'  | awk '{print $2}' | df -h --total | awk '$1 == "total" { print $2}' | sed 's/[^0-9]*//g'
+    register: disk_used
+
+  - debug:
+      msg: "disk_used: {{ disk_used.stdout}}"
+
+# Collect Disk Size
+  - name: Get Disk Size
+    shell: "fdisk -l | grep Disk | head -1 | awk '{print $3}'"
+    become: yes
+    register: disk_size
+
+# Collect Data Size
+  - name: Get Data Size (sdb size)
+    shell: fdisk -l | grep 'Disk /dev/sdb' | awk '{ printf $3 }'
+    become: true
+    register: sdb_size
+    ignore_errors: true
+  
+  - debug:
+      msg: "sdb_size {{ sdb_size.stdout }}"
+
+# Collect Data Used
+  - name: Get Data Used
+    shell: df -h | grep sdb | awk '{printf $2}'
+    register: sdb_used
+
+  - debug:
+      msg: "sdb_used {{ sdb_used.stdout }}"
+
+# Collect number of SCSI Devices | Attention! it may includes CDROMs!
+  - name: Get Disks Number
+    shell: lsblk -d | wc -l
+    register: disks_number
+    ignore_errors: true
+    
+  - debug:
+     msg: "Disks Number: {{disks_number.stdout}}"
+  - debug:
+     msg: "Real Disks: {{real_disks_number}}"
+
+# NFS
+  - name: NFS Presence Check
+    shell: cat /etc/fstab | grep -i nfs | wc -l
+    register: nfs_check
+    ignore_errors: true
+    tags: nfs
+
+
+  - set_fact: 
+       nfs_presence: "{{ 'NFS' if (nfs_check.stdout>1) else 'Not NFS' }}"
+    tags: nfs
+
+  - debug:
+      msg: "NFS Presence: {{nfs_presence}}"
+
+# Encryption
+  - name: Encryption Presence Check
+    shell: cat /etc/fstab | grep crypto | wc -l
+    register: encryption_check
+    tags: encryption
+
+  - set_fact:
+      encryption_presence: "{{ 'Encryption present' if (encryption_check==1) else 'Encryption not present' }}"
+    tags: encryption  
+
+  - debug:
+      msg: "Encryption: {{encryption_presence}}"
+
+  - name: Verify if man-pages are installed 
+    yum:
+      list=man-pages
+    register: man_pages
+    ignore_errors: true
+
+
+# Write header of the file
+  - name: Header Write
+    local_action:
+      module: shell
+      cmd: echo "Hostname/VM,ID APP,Applicazione/Progetto,Scope freeze applicazione (Y/N/Parziale),Scope freeze Hostname (Y/N),Scope,Tipologia,Isola applicativa,Riferimento Principale,Struttura,Resp. Struttura,Ambiente,Data Center,OS,Kernel Version,Contenuto file hosts,Ready for Azure,Dominio,Ruolo Primario,IP Address,Default GW,Dns Prim.,Dns Sec.,# NIC,Network 1,Network 2,Network 3,Network 4,SW Primario ,SW Secondario,Altro SW,DBMS (Si/No),Cluster (Si/No),ID Cluster,LB (Si/No),ID Contesto Bil,RTO,RPO,CPU,% vCPU media,% vCPU max,Total RAM [MB], Used RAM [MB],#Dischi,Vol. Boot [MB],% Utilizzo Boot,Vol. DATI tot [MB],% Utilizzo Dati,Tipologia Storage,Presenza NFS,Presenza Encryption,Livello Backup,Note,Commenti" > log.csv
+    tags: output
+
+# Register Facts for easiness of management
+  - set_fact:
+      ipv4_address: "{{(ansible_all_ipv4_addresses[0])}}"
+      ipv4_gateway: "{{(ansible_default_ipv4.gateway)}}"
+      average_cpu: "{{(average_cpu.stdout)}}"
+      processor_count: "{{(ansible_processor_count)}}"
+      total_memory: "{{ansible_memory_mb.real.total}}"
+      used_memory: "{{(ansible_memory_mb.real.used)}}"
+      ignore_errors: true
+    tags: content
+ 
+  - debug:
+      msg: "Used memory is: {{used_memory}}"
+
+  - debug:
+      msg: "Not installed"
+    when: man_pages.results | selectattr("yumstate", "match", "installed") | list | length == 0
+
+  - set_fact:
+      man_pages_presence: "Man Package Present"
+    when: man_pages.results | selectattr("yumstate", "match", "installed") | list | length != 0
+    ignore_errors: true
+
+  - debug:
+      msg: "Man Pages Presence: {{man_pages_presence}}"
+    ignore_errors: true
+
+  - command: mysql --version
+    name: ls
+    register: mysql_version
+    ignore_errors: true
+
+#  - debug:
+#      msg: "MySQL_version: {{mysql_version.stdout}}"
+
+
+#  - set_fact:
+#     mysql_presence: "{{ 'MySQL Present' if (mysql_version.stdout>0) else 'MySQL Not Present'}}"
+#   when: mysql_version is defined
+
+# Write metrics to output
+  - name: Content Write
+    local_action:
+      module: shell 
+      cmd: echo "{{ansible_hostname}},,,,,,,,,,,,,{{ansible_distribution_file_search_string}}{{ansible_distribution_version}},{{ansible_kernel}},,,{{ansible_domain}},,{{ipv4_address}},{{ipv4_gateway}},{{first_nameserver.stdout}},{{second_nameserver.stdout}},{{network_interfaces_number}},,,,,,,,,,,,,,,{{ansible_processor_count}},{{average_cpu}},{{max_cpu.stdout}},{{total_memory}},{{used_memory}},{{real_disks_number}},{{sda_size.stdout}},{{boot_volume_percentage.stdout}},{{sdb_size.stdout}},{{sdb_used.stdout}},{{storage_type.stdout}},{{nfs_presence}},{{encryption_presence}},,," >> log.csv
+    tags: output
+

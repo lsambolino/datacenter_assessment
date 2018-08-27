@@ -1,0 +1,1 @@
+{{ansible_hostname}},ID APP,Applicazione/Progetto,Scope freeze applicazione Parziale,Scope freeze Hostname YN,Scope,Tipologia,Isola applicativa,Riferimento Principale,Struttura,Resp. Struttura,Ambiente,Data Center,{{ansible_distribution_file_search_string}},{{ansible_distribution_release}},Contenuto file hosts,Ready for Azure

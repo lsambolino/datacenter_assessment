@@ -1,0 +1,22 @@
+---
+- hosts: rhelmachines
+  become: true
+  vars:
+    remote_dir: /etc/ansible/facts.d
+    facts_files:
+      - date_time.fact
+  tasks:
+    - name: Ensure remote dir is present
+      file:
+         path: "{{ remote_dir }}"
+         state: directory
+         mode: 0755
+    - name: Deploy custom facts files
+      copy:
+         src: "{{ item }}"
+         dest: "{{ remote_dir }}//{{ item}}"
+         mode: 0755
+      with_items: "{{ facts_files }}"
+
+
+

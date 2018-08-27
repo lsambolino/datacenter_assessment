@@ -1,0 +1,55 @@
+---
+- hosts: pov
+  gather_facts: True
+  tasks:
+  - name: Gather Facts
+    setup:
+        gather_subset=all
+    register: facts
+
+#  - debug:
+#      msg: "{{ facts.ansible_facts.ansible_all_ipv4_addresses }}"
+#  
+#  - name: ensure file exists
+#    copy:
+#      content: ""
+#      dest: /tmp/assessments/facts.csv
+#      force: no
+#      owner: luigi
+#      mode: 0555
+
+#  - name: write the header of the file
+#    local_action:
+#     module: lineinfile
+#     line: ansible_all_ipv4_addresses ansible_all_ipv6_addresses ansible_architecture ansible_default_ipv4 ansible_devices ansible_distribution ansible_distribution_release ansible_distribution_version ansible_dns ansible_nodename ansible_processor ansible_processor_cores ansible_uptime_seconds
+#     path: /tmp/assessments/facts.csv
+#     state: present
+#     create: yes
+  
+#  - name: Change test_user1 Password
+#        user: name=luigi update_password=always password=$827#$%2978
+#
+  - name: copy content from facts to output file
+    local_action: 
+     module: lineinfile 
+     line:  "{{ item }}"
+     path: /tmp/assessments/facts.csv
+     state: present
+     insertafter: EOF
+    loop: 
+      - "{{ facts.ansible_facts.ansible_all_ipv4_addresses }}"
+      - "{{ facts.ansible_facts.ansible_all_ipv6_addresses }}"
+      - "{{ ansible_architecture }}"
+      - "{{ ansible_default_ipv4 }}" 
+      - "{{ ansible_devices }}" 
+      - "{{ ansible_distribution }}" 
+      - "{{ ansible_distribution_release }}" 
+      - "{{ ansible_distribution_version }}" 
+      - "{{ ansible_dns }}" 
+      - "{{ ansible_nodename }}" 
+      - "{{ ansible_processor }}" 
+      - "{{ ansible_processor_cores }}" 
+      - "{{ ansible_uptime_seconds }}"
+
+  - debug:
+      msg: "{{ hostvars.host.ansible_local.* }}"

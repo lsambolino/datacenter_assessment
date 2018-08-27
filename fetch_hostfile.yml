@@ -1,0 +1,7 @@
+---
+- hosts: rhelmachines
+  tasks:
+  - name: get hosts file from hosts
+    fetch:
+      src: /etc/hosts
+      dest: /tmp/fetched

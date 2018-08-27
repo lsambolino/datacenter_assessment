@@ -1,0 +1,12 @@
+#!/usr/bin/python
+
+import json
+import datetime
+
+today = datetime.date.today()
+custom_facts = json.dumps({"organization":"QA","date","hostname":str(today)})
+
+
+
+with open("Output.txt", "w") as text_file:
+    text_file.write("Custom Facts: %s" % (custom_facts))

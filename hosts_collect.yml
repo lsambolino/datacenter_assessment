@@ -1,0 +1,16 @@
+---
+- hosts: pov
+  gather_facts: True
+  tasks:
+  - name: Gather Facts
+    setup:
+        gather_subset=all
+    register: facts
+
+#  - debug:
+#      msg: "{{ facts.ansible_facts.ansible_all_ipv4_addresses }}"
+#  
+  - name: ensure file exists
+    fetch:
+      src: /etc/hosts
+      dest: /tmp/assessments/

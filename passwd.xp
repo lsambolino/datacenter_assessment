@@ -1,0 +1,24 @@
+#!/usr/bin/expect -f
+
+log_file myfile.log ;# <<< === append output to a file
+
+set timeout 180
+set username act3ahl
+set old_password Pegasus1
+set new_password Pcloncloud123!
+set f [open "ips.txt"]
+set filedes [split [read $f] "\n"]
+close $f
+
+foreach ip $filedes {
+spawn ssh $username@$ip
+expect "$username"
+send "$old_password\r"
+expect "(current)"
+send "$old_password\r"
+expect "New"
+send "$new_password\r"
+expect "Retype"
+send "$new_password\r"
+send "exit\r"
+}
